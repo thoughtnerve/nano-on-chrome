@@ -48,6 +48,23 @@ function addUserMessage(text) {
   scrollToBottom();
 }
 
+// Convert links to clickable hyperlinks
+function processLinksInText(text) {
+  // Configure marked to open links in new tabs
+  const renderer = new marked.Renderer();
+  renderer.link = function(href, title, text) {
+    return `<a href="${href}" target="_blank" rel="noopener noreferrer" class="ai-link" title="${title || href}">${text}</a>`;
+  };
+  
+  marked.setOptions({
+    renderer: renderer,
+    breaks: true,
+    gfm: true
+  });
+  
+  return marked.parse(text);
+}
+
 // Add AI message to chat
 function addAIMessage(text) {
   const messageDiv = document.createElement('div');
@@ -61,7 +78,7 @@ function addAIMessage(text) {
       </svg>
     </div>
     <div class="message-content">
-      <div class="message-text">${DOMPurify.sanitize(marked.parse(text))}</div>
+      <div class="message-text">${DOMPurify.sanitize(processLinksInText(text))}</div>
       <div class="message-time">${new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</div>
     </div>
   `;
@@ -153,6 +170,123 @@ async function getPageContent() {
     console.error('Error getting page content:', error);
     return null;
   }
+}
+
+// Page interaction functions
+async function findElementsOnPage(text) {
+  try {
+    const tab = await getCurrentTab();
+    if (!tab || !tab.id) {
+      throw new Error('No active tab found');
+    }
+
+    const response = await chrome.tabs.sendMessage(tab.id, { 
+      action: 'findElements', 
+      text: text 
+    });
+    return response;
+  } catch (error) {
+    console.error('Error finding elements:', error);
+    return null;
+  }
+}
+
+async function clickElementOnPage(selector) {
+  try {
+    const tab = await getCurrentTab();
+    if (!tab || !tab.id) {
+      throw new Error('No active tab found');
+    }
+
+    const response = await chrome.tabs.sendMessage(tab.id, { 
+      action: 'clickElement', 
+      selector: selector 
+    });
+    return response;
+  } catch (error) {
+    console.error('Error clicking element:', error);
+    return { success: false, message: error.message };
+  }
+}
+
+async function clickAllMatchingOnPage(text, maxClicks = 10) {
+  try {
+    const tab = await getCurrentTab();
+    if (!tab || !tab.id) {
+      throw new Error('No active tab found');
+    }
+
+    const response = await chrome.tabs.sendMessage(tab.id, { 
+      action: 'clickAllMatching', 
+      text: text,
+      maxClicks: maxClicks
+    });
+    return response;
+  } catch (error) {
+    console.error('Error clicking elements:', error);
+    return { success: false, message: error.message };
+  }
+}
+
+// Parse AI response for actions
+function parseActionsFromText(text) {
+  const actions = [];
+  
+  // Look for action patterns in the AI response
+  const actionPatterns = [
+    /(?:click|press|tap)\s+(?:on\s+)?["']?([^"'\n]+)["']?/gi,
+    /(?:find|locate|look\s+for)\s+["']?([^"'\n]+)["']?/gi,
+    /(?:show\s+all|load\s+all|expand\s+all|click\s+all)\s+["']?([^"'\n]+)["']?/gi
+  ];
+  
+  actionPatterns.forEach(pattern => {
+    const matches = text.matchAll(pattern);
+    for (const match of matches) {
+      if (match[1]) {
+        actions.push({
+          type: match[0].toLowerCase().includes('all') ? 'clickAll' : 'click',
+          target: match[1].trim(),
+          original: match[0]
+        });
+      }
+    }
+  });
+  
+  return actions;
+}
+
+// Execute actions from AI response
+async function executeActions(actions) {
+  const results = [];
+  
+  for (const action of actions) {
+    if (action.type === 'clickAll') {
+      const result = await clickAllMatchingOnPage(action.target);
+      results.push({
+        action: action.original,
+        result: result.message,
+        success: result.success
+      });
+    } else if (action.type === 'click') {
+      const elements = await findElementsOnPage(action.target);
+      if (elements && elements.elements && elements.elements.length > 0) {
+        const result = await clickElementOnPage(elements.elements[0].selector);
+        results.push({
+          action: action.original,
+          result: result.message,
+          success: result.success
+        });
+      } else {
+        results.push({
+          action: action.original,
+          result: `No elements found matching "${action.target}"`,
+          success: false
+        });
+      }
+    }
+  }
+  
+  return results;
 }
 
 async function updatePageInfo() {
@@ -276,6 +410,18 @@ Title: ${currentPageData.title}
 URL: ${currentPageData.url}
 Content: ${currentPageData.content}
 
+AGENT CAPABILITIES: You can interact with this webpage! You have the following powers:
+1. Click elements by describing them (e.g., "click the Show More button")
+2. Find and click all matching elements (e.g., "show all results" or "load all content")
+3. Navigate through paginated content automatically
+
+When the user asks you to interact with the page (like "show all results", "load more", "expand all", etc.), you can perform these actions. Simply include natural language instructions in your response like "I'll click all the 'Show More' buttons" and the system will execute these actions.
+
+Examples of what you can do:
+- "I'll click the 'Show More Results' button to load additional content"
+- "Let me expand all the collapsed sections by clicking 'Show More'"
+- "I'll load all the results by clicking the pagination buttons"
+
 When answering questions, you can reference and analyze the content from this webpage. If the user asks about "this page" or similar references, they are referring to the webpage content provided above.`;
       } else {
         // Page context is enabled but not available
@@ -305,7 +451,27 @@ You can still answer general questions normally without page context.`;
       topK: sliderTopK.value
     };
     const response = await runPrompt(prompt, params);
-    showResponse(response);
+    
+    // Check if the response contains actions to execute
+    const actions = parseActionsFromText(response);
+    if (actions.length > 0) {
+      // Show the AI response first
+      showResponse(response);
+      
+      // Then execute actions
+      addUserMessage("🤖 Executing actions...");
+      const actionResults = await executeActions(actions);
+      
+      // Show results of actions
+      let resultMessage = "Action results:\n";
+      actionResults.forEach(result => {
+        resultMessage += `• ${result.action}: ${result.result}\n`;
+      });
+      
+      addAIMessage(resultMessage);
+    } else {
+      showResponse(response);
+    }
   } catch (e) {
     showError(e);
   }
@@ -345,3 +511,4 @@ function show(element) {
 function hide(element) {
   element.setAttribute('hidden', '');
 }
+

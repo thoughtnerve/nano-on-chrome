@@ -119,11 +119,131 @@ function extractPageContent() {
   }
 }
 
+// Page interaction functions
+function findElementsByText(text, tagNames = ['button', 'a', 'span', 'div']) {
+  const elements = [];
+  const searchText = text.toLowerCase().trim();
+  
+  tagNames.forEach(tagName => {
+    const nodeList = document.getElementsByTagName(tagName);
+    Array.from(nodeList).forEach(element => {
+      const elementText = element.textContent.toLowerCase().trim();
+      if (elementText.includes(searchText) || 
+          elementText === searchText ||
+          element.getAttribute('aria-label')?.toLowerCase().includes(searchText)) {
+        elements.push({
+          element,
+          text: element.textContent.trim(),
+          tagName: element.tagName.toLowerCase(),
+          selector: getUniqueSelector(element)
+        });
+      }
+    });
+  });
+  
+  return elements;
+}
+
+function getUniqueSelector(element) {
+  if (element.id) {
+    return `#${element.id}`;
+  }
+  
+  if (element.className && typeof element.className === 'string') {
+    const classes = element.className.split(' ').filter(c => c.length > 0);
+    if (classes.length > 0) {
+      return `.${classes.join('.')}`;
+    }
+  }
+  
+  // Fallback to nth-child selector
+  const parent = element.parentElement;
+  if (parent) {
+    const siblings = Array.from(parent.children);
+    const index = siblings.indexOf(element) + 1;
+    return `${element.tagName.toLowerCase()}:nth-child(${index})`;
+  }
+  
+  return element.tagName.toLowerCase();
+}
+
+function clickElement(selector) {
+  try {
+    const element = document.querySelector(selector);
+    if (element) {
+      // Scroll element into view
+      element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      
+      // Wait a bit for scroll, then click
+      setTimeout(() => {
+        element.click();
+        console.log('Clicked element:', selector);
+      }, 500);
+      
+      return { success: true, message: `Clicked element: ${element.textContent.trim()}` };
+    } else {
+      return { success: false, message: `Element not found: ${selector}` };
+    }
+  } catch (error) {
+    return { success: false, message: `Error clicking element: ${error.message}` };
+  }
+}
+
+async function clickAllMatching(text, maxClicks = 10) {
+  const results = [];
+  let clickCount = 0;
+  
+  while (clickCount < maxClicks) {
+    const elements = findElementsByText(text);
+    
+    if (elements.length === 0) {
+      break;
+    }
+    
+    // Click the first matching element
+    const element = elements[0];
+    const clickResult = clickElement(element.selector);
+    results.push(clickResult);
+    clickCount++;
+    
+    if (!clickResult.success) {
+      break;
+    }
+    
+    // Wait for potential content to load
+    await new Promise(resolve => setTimeout(resolve, 2000));
+  }
+  
+  return {
+    success: true,
+    clickCount,
+    results,
+    message: `Clicked "${text}" ${clickCount} times`
+  };
+}
+
 // Listen for requests from the side panel
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'getPageContent') {
     const pageData = extractPageContent();
     sendResponse(pageData);
+  }
+  
+  if (request.action === 'findElements') {
+    const elements = findElementsByText(request.text);
+    sendResponse({ elements: elements.map(e => ({ text: e.text, tagName: e.tagName, selector: e.selector })) });
+  }
+  
+  if (request.action === 'clickElement') {
+    const result = clickElement(request.selector);
+    sendResponse(result);
+  }
+  
+  if (request.action === 'clickAllMatching') {
+    clickAllMatching(request.text, request.maxClicks || 10).then(result => {
+      sendResponse(result);
+    });
+    return true; // Keep message channel open for async response
   }
 });
 
