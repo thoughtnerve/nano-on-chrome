@@ -1,0 +1,198 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" type="text/css" href="index.css" />
+  </head>
+  <body class="bg-background text-foreground">
+    <div class="container">
+      <!-- Header -->
+      <div class="header">
+        <h1 class="title">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M9 12l2 2 4-4"/>
+            <path d="M21 12c-1 0-3-1-3-3s2-3 3-3 3 1 3 3-2 3-3 3"/>
+            <path d="M3 12c1 0 3-1 3-3s-2-3-3-3-3 1-3 3 2 3 3 3"/>
+          </svg>
+          AI Assistant
+        </h1>
+        <p class="subtitle">Powered by Gemini Nano running on this device</p>
+      </div>
+
+      <!-- Page Context Card (Hidden by default, shown only on errors) -->
+      <div id="page-context-card" class="card error-card" hidden>
+        <div class="card-header">
+          <div class="card-title">
+            <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"/>
+              <line x1="15" y1="9" x2="9" y2="15"/>
+              <line x1="9" y1="9" x2="15" y2="15"/>
+            </svg>
+            Page Context Error
+          </div>
+        </div>
+        <div class="card-content">
+          <div class="error-state">
+            <svg class="icon-sm error-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+              <line x1="12" y1="9" x2="12" y2="13"/>
+              <line x1="12" y1="17" x2="12.01" y2="17"/>
+            </svg>
+            <div>
+              <div class="error-text">Cannot access page content</div>
+              <div id="page-error-details" class="page-error-details">Unable to extract content from this page</div>
+              <div class="toggle-group" style="margin-top: 12px;">
+                <input type="checkbox" id="page-context-toggle" class="toggle-input" checked />
+                <label for="page-context-toggle" class="toggle-label">
+                  <span class="toggle-switch"></span>
+                  Try to include page content
+                </label>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Chat Container -->
+      <div class="chat-container">
+        <div id="chat-messages" class="chat-messages">
+          <!-- Welcome message -->
+          <div class="message ai-message">
+            <div class="message-avatar ai-avatar">
+              <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M9 12l2 2 4-4"/>
+                <path d="M21 12c-1 0-3-1-3-3s2-3 3-3 3 1 3 3-2 3-3 3"/>
+                <path d="M3 12c1 0 3-1 3-3s-2-3-3-3-3 1-3 3 2 3 3 3"/>
+              </svg>
+            </div>
+            <div class="message-content">
+              <div class="message-text">
+                Hello! I'm your AI assistant powered by Gemini Nano. I can help you with questions about the current page or any general topics. What would you like to know?
+              </div>
+              <div class="message-time">Just now</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Loading Message (hidden by default) -->
+        <div id="loading-message" class="message ai-message" hidden>
+          <div class="message-avatar ai-avatar">
+            <div class="loading-spinner-small"></div>
+          </div>
+          <div class="message-content">
+            <div class="message-text">
+              <span class="typing-indicator">
+                <span></span>
+                <span></span>
+                <span></span>
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Input Area -->
+      <div class="input-container">
+        <div class="input-group">
+          <div class="input-field">
+            <textarea
+              id="input-prompt"
+              class="chat-input"
+              placeholder='Ask me anything... Try "Summarize this page" or "Explain this content"'
+              rows="2"
+            ></textarea>
+            <div class="input-focus-ring"></div>
+          </div>
+          <div class="input-actions">
+            <button id="button-reset" class="btn-action" title="Clear chat">
+              <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="1,4 1,10 7,10"/>
+                <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>
+              </svg>
+            </button>
+            <button id="button-prompt" class="btn-send" disabled>
+              <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="m22 2-7 20-4-9-9-4Z"/>
+                <path d="M22 2 11 13"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Model Settings -->
+      <div class="card collapsible">
+        <div class="card-header clickable" onclick="toggleSettings()">
+          <div class="card-title">
+            <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="3"/>
+              <path d="M12 1v6m0 6v6m11-7h-6m-6 0H1"/>
+            </svg>
+            Model Settings
+          </div>
+          <svg id="settings-chevron" class="icon-sm chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="6,9 12,15 18,9"/>
+          </svg>
+        </div>
+        <div id="settings-content" class="card-content" hidden>
+          <div class="slider-group">
+            <label class="slider-label">
+              Temperature: <span id="label-temperature" class="slider-value">0.7</span>
+            </label>
+            <input
+              type="range"
+              id="temperature"
+              class="slider"
+              min="0"
+              max="2"
+              step="0.01"
+            />
+          </div>
+          <div class="slider-group">
+            <label class="slider-label">
+              Top-k: <span id="label-top-k" class="slider-value">3</span>
+            </label>
+            <input
+              type="range"
+              id="top-k"
+              class="slider"
+              min="1"
+              max="8"
+              step="1"
+            />
+          </div>
+        </div>
+      </div>
+
+      <!-- Error Toast (hidden by default) -->
+      <div id="error-toast" class="error-toast" hidden>
+        <div class="error-toast-content">
+          <svg class="icon-sm error-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"/>
+            <line x1="15" y1="9" x2="9" y2="15"/>
+            <line x1="9" y1="9" x2="15" y2="15"/>
+          </svg>
+          <span id="error" class="error-text">An error occurred</span>
+        </div>
+      </div>
+    </div>
+
+    <script src="index.js" type="module"></script>
+    <script>
+      function toggleSettings() {
+        const content = document.getElementById('settings-content');
+        const chevron = document.getElementById('settings-chevron');
+        const isHidden = content.hasAttribute('hidden');
+        
+        if (isHidden) {
+          content.removeAttribute('hidden');
+          chevron.style.transform = 'rotate(180deg)';
+        } else {
+          content.setAttribute('hidden', '');
+          chevron.style.transform = 'rotate(0deg)';
+        }
+      }
+    </script>
+  </body>
+</html>
